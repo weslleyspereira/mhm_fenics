@@ -1,0 +1,48 @@
+# TetGen input file
+#
+# tet1.poly
+#
+# A tetrahedron described in .poly format
+# with 4 boundary markers defined.
+#
+
+# part 1 - node list
+#  4 nodes, 3 dim., no attr. no mark
+# <# of points> <dimension (3)> <# of attributes> <boundary markers (0 or 1)>
+4  3  0  0
+
+# <point #> <x> <y> <z> [attributes] [boundary marker]
+0  0  0  0
+1  1  0  0
+2  0  1  0
+3  0  0  1
+
+# part 2 - facet list
+#  4 facets, have mark
+# <# of facets> <boundary markers (0 or 1)>
+4  1
+
+# <# of polygons> [# of holes] [boundary marker]
+1 0 1
+# <# of corners> <corner 1> <corner 2> ... <corner #>
+3  0 1 2
+# <hole #> <x> <y> <z>
+
+1 0 2
+3  0 1 3
+
+1 0 3
+3  0 2 3
+
+1 0 4
+3  1 2 3
+
+# part 3 - hole list
+# <# of holes>
+0
+# <hole #> <x> <y> <z>
+
+# part 4 - region list
+# <# of region>
+0
+# <region #> <x> <y> <z> <region number> <region attribute>
