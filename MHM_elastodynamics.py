@@ -37,7 +37,6 @@ from dolfin.cpp.mesh import MeshFunction, Mesh
 from dolfin.cpp.io import File
 from dolfin.cpp.la import LUSolver
 from demos.meshes.geometry import markBoundarySubdomains, markBoundariesOfMesh
-from copy import copy
 
 #from mshr import *
 #from math import ceil
@@ -196,10 +195,6 @@ pvdFileV = [ File(outputFolder+"/"+str(i)+"/v_psi.pvd", "compressed") for i in r
 # Timestep
 dt = (timeInterval.tf-physics.t0)/timeInterval.nt
 
-# Class representing the initial conditions
-u_0ini = project(physics.u0, V)
-v_0ini = project(physics.v0, V)
-
 # Dirichlet boundary condition
 dirichletBC = {}
 if 'dirichletBC' in dir(physics):
@@ -223,8 +218,8 @@ for iPsi in range(nPsi):
 	
 	# Initial condition
 	tk = physics.t0
-	u = copy(u_0ini)
-	v = copy(v_0ini)
+	u = project(physics.u0, V) # This can be improved by not projecting for each psi, but be aware! Do not use: u = u0_ini!!!
+	v = project(physics.v0, V)
 
 	# Neumann boundary condition
 	timeNeumann = False
