@@ -7,6 +7,7 @@ Created on 3 de ago de 2017
 from dolfin.cpp.mesh import Point, MeshFunction, SubDomain
 from dolfin.cpp.function import near
 from dolfin.cpp.io import File
+from numpy import array
 
 class Geometry():
     """Geometry class"""
@@ -38,7 +39,7 @@ class Geometry():
             exit(1)
         return geoNormals
 
-def markBoundariesOfMesh(mesh,geo,**kwargs):
+def markBoundariesOfMesh(mesh, geo, **kwargs):
     '''Mark the boundaries of a mesh given a geometry
     
     All interior faces are marked with zero
@@ -82,3 +83,49 @@ def markBoundariesOfMesh(mesh,geo,**kwargs):
         File(kwargs['outputPvd']) << faceSubdomains
         
     return faceSubdomains
+
+def markBoundarySubdomains(mesh, boundaries, **kwargs):
+    '''Mark the boundaries of a mesh given a geometry
+    
+    All interior faces are marked with zero
+    
+    boundaries is a dictionary {label: definition of boundary}
+    '''
+    
+    bndSubdomains = MeshFunction("size_t", mesh, mesh.geometry().dim()-1)
+    bndSubdomains.set_all(0)
+    
+    for i in boundaries:
+        class BndSubDomain(SubDomain):
+            def inside(self, x, on_boundary):
+                value = array([0.0])
+                boundaries[i].eval(value, x)
+                return (value==1.0) and on_boundary
+        aux = BndSubDomain()
+        aux.mark(bndSubdomains, i)
+        
+    # Save Dolfin XML format of the subdomains
+    if 'outputXmlGz' in kwargs:
+        File(kwargs['outputXmlGz']) << bndSubdomains
+        
+    # Save sub domains to VTK files
+    if 'outputPvd' in kwargs:
+        File(kwargs['outputPvd']) << bndSubdomains
+        
+    return bndSubdomains
+    
+## If there exist dirichlet boundary
+#if hasDirichlet:
+#    if os.path.isfile(dirichletPath):
+#        dirichletSubdomain = MeshFunction("bool", mesh, dirichletPath)
+#    else:
+#        # Mark faces
+#        dirichletSubdomain.set_all(False)
+#        class Aux(SubDomain):
+#            def inside(self, x, on_boundary):
+#                value = array([0.0])
+#                physics.dirichletBnd.eval(value, x)
+#                return (value==1.0) and on_boundary
+#        aux = Aux()
+#        aux.mark(dirichletSubdomain, True)
+#        aux.mark(bndSubdomains, 0)

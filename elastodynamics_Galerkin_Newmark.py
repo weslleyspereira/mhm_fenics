@@ -39,6 +39,7 @@ from dolfin.fem.assembling import assemble
 from dolfin.cpp.mesh import MeshFunction, SubDomain, Mesh
 from dolfin.cpp.io import File
 from dolfin.cpp.la import LUSolver
+from demos.meshes.geometry import markBoundarySubdomains
 
 ###
 ### Configuration
@@ -71,6 +72,7 @@ from demos.params.timeInterval import timeInterval
 # Mesh paths
 #dirichletPath = "dirichletBnd.xml.gz"
 bndPath = "boundaries.xml.gz"
+bndPvd = "bndSubdomains.pvd"
 
 # Load mesh
 if isfile(meshPath):
@@ -83,41 +85,14 @@ else:
 #dirichletSubdomain = MeshFunction("bool", mesh, geo.nDim-1)
 bndSubdomains = MeshFunction("size_t", mesh, geo._nDim-1)
 	
-# If there exist dirichlet boundary
+# If there exist marked boundary
 if 'boundaries' in dir(physics):
 	if (reutilizeBoundaryInfo and isfile(bndPath)):
 		bndSubdomains = MeshFunction("size_t", mesh, bndPath)
 	else:
-		# Mark Dirichlet faces
-		bndSubdomains.set_all(0)
-		for i in physics.boundaries:
-			class Aux(SubDomain):
-				def inside(self, x, on_boundary):
-					value = array([0.0])
-					physics.boundaries[i].eval(value, x)
-					return (value==1.0) and on_boundary
-			aux = Aux()
-			aux.mark(bndSubdomains, i)
-		# Save Dolfin XML format
-		File(bndPath) << bndSubdomains
+		bndSubdomains = markBoundarySubdomains(mesh, physics.boundaries, outputXmlGz=bndPath, outputPvd=bndPvd)
 else: 
 	bndSubdomains.set_all(0)
-	
-## If there exist dirichlet boundary
-#if hasDirichlet:
-#	if os.path.isfile(dirichletPath):
-#		dirichletSubdomain = MeshFunction("bool", mesh, dirichletPath)
-#	else:
-#		# Mark faces
-#		dirichletSubdomain.set_all(False)
-#		class Aux(SubDomain):
-#			def inside(self, x, on_boundary):
-#				value = array([0.0])
-#				physics.dirichletBnd.eval(value, x)
-#				return (value==1.0) and on_boundary
-#		aux = Aux()
-#		aux.mark(dirichletSubdomain, True)
-#		aux.mark(bndSubdomains, 0)
 
 ## Get the set of subdomains
 #setneumannSubdomains = set(neumannSubdomains.array())
@@ -130,10 +105,6 @@ ds = Measure('ds', domain=mesh, subdomain_data=bndSubdomains) # boundary measure
 #plot(mesh, interactive=True)
 #plot(bndSubdomains, interactive=True)
 #plot(dirichletSubdomain, interactive=True)
-
-# Save sub domains to VTK files
-bndFile = File("bndSubdomains.pvd")
-bndFile << bndSubdomains
 
 ###
 ### Variational scheme

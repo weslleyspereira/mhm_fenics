@@ -7,4 +7,4 @@ Created on 3 de ago de 2017
 class FiniteElement:
     """Finite Element description"""
     family = "CG"
-    order = 1
+    order = 2

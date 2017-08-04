@@ -5,4 +5,4 @@ Created on 3 de ago de 2017
 '''
 from demos.params.time import TimeInterval
 
-timeInterval = TimeInterval(.01, 10)
+timeInterval = TimeInterval(.1, 100)

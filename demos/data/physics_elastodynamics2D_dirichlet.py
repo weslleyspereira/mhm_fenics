@@ -24,15 +24,15 @@ f 		= Expression(("1.0*omega*omega*sin(2*pi*x[0])*sin(2*pi*x[1])*cos(omega*t) - 
 #dirichletBnd = Expression("x[0] < -1", degree = 2)
 #dirichletBnd = Expression("x[0] == 0", degree = 2)
 boundaries = {
-	1: Expression("x[1] == 0.0", degree = 2),
-	2: Expression("x[0] == 1.0", degree = 2),
-	3: Expression("x[1] == 1.0", degree = 2),
-	4: Expression("x[0] == 0.0", degree = 2)
+	#1: Expression("x[1] == 0.0", degree = 2)#,
+	#2: Expression("x[0] == 1.0", degree = 2),
+	#3: Expression("x[1] == 1.0", degree = 2),
+	#4: Expression("x[0] == 0.0", degree = 2)
 }
 
 # Boundary conditions
 dirichletBC = {
-	1 : Constant((0.0, 0.0))#,
+	#1 : Constant((0.0, 0.0))#,
 	#2 : Expression(("1.0","0"), degree = 2)
 }
 #neumannBC  = {
