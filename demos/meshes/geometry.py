@@ -24,7 +24,7 @@ class Geometry():
         return len(self._faces)
     
     def getNormals(self):
-        geoNormals = [Point() for i in range(self._faces)]
+        geoNormals = [Point() for i in range(self.getNoFaces())]
         if self._nDim == 2:
             for i in range(self.getNoFaces()):
                 v = self._points[self._faces[i][1]]-self._points[self._faces[i][0]]
@@ -64,10 +64,10 @@ def markBoundariesOfMesh(mesh,geo,**kwargs):
 
     # Mark boundary faces for face elements
     for i in range(geo.getNoFaces()):
-        class SubDomain(SubDomain):
+        class BndSubDomain(SubDomain):
             def inside(self, x, on_boundary):
                 return near( geoNormals[i].dot(Point(x)-geo._points[geoBndPoints[i]]), 0.0 ) and on_boundary
-        aSubDomain = SubDomain()
+        aSubDomain = BndSubDomain()
         label = i+1
         if hasattr(geo, 'facesMarkers'):
             label = geo.facesMarkers[i]
@@ -80,3 +80,5 @@ def markBoundariesOfMesh(mesh,geo,**kwargs):
     # Save sub domains to VTK files
     if 'outputPvd' in kwargs:
         File(kwargs['outputPvd']) << faceSubdomains
+        
+    return faceSubdomains
