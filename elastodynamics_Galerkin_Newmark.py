@@ -1,154 +1,313 @@
+'''
+Created on 3 de ago de 2017
+
+@author: weslley
+'''
+
+###
+### Python modules
+###
+
+# python future
 from __future__ import print_function
-from fenics import *
-import numpy as np
-#from mshr import *
-#from math import ceil
 
-# Load model parameters
-from demos.data.physics_elastodynamics2D import *
+# os path
+from os.path import isfile
 
-# Stress tensor
-def sigma(r):
-	Eps = sym(grad(r))
-	return 2.0*mu*Eps + lmbda*tr(Eps)*Identity(len(r))
+# numpy
+from numpy import array
+
+# fenics
+from fenics import dx
+
+# ufl
+from ufl.operators import inner, grad
+from ufl.measure import Measure
+
+# Dolfin functions
+from dolfin.functions.functionspace import VectorFunctionSpace,\
+	TensorFunctionSpace
+from dolfin.functions.function import TrialFunction, TestFunction
+from dolfin.functions.expression import Expression
+
+# Dolfin fem
+from dolfin.fem.projection import project
+from dolfin.fem.bcs import DirichletBC
+from dolfin.fem.assembling import assemble
+
+# Dolfin cpp
+from dolfin.cpp.mesh import MeshFunction, SubDomain, Mesh
+from dolfin.cpp.io import File
+from dolfin.cpp.la import LUSolver
+
+###
+### Configuration
+###
+
+verbose=True
+reutilizeBoundaryInfo=False
+
+meshPath = "demos/meshes/triangle.7.xml.gz"
+outputFolder = "./results_galerkin/"
+
+### Load elasticity module
+import demos.data.elasticity as elasticity
+### Load model parameters
+import demos.data.physics_elastodynamics2D_dirichlet as physics
+### Load geometry
+from demos.meshes.square1x1 import geo
+#import demos.meshes.triangle1x1 as geo
+### Load Finite Element Space params
+from demos.params.galerkin import finiteElement
+# Load Newmark parameters
+import demos.params.newmark as newmark
+# Time interval
+from demos.params.timeInterval import timeInterval
 
 ###
 ### Load mesh
 ###
 
-mesh = Mesh("demos/meshes/tet01.xml.gz")
-nDim = mesh.mesh.topology().dim()
+# Mesh paths
+#dirichletPath = "dirichletBnd.xml.gz"
+bndPath = "boundaries.xml.gz"
+
+# Load mesh
+if isfile(meshPath):
+	mesh = Mesh(meshPath)
+else:
+	print("Mesh bndFile does not exist!")
+	exit(1)
 
 # Here we consider 0 as a internal face
-faceSubdomains = MeshFunction("size_t", mesh, "mesh_func.xml")
-#dirichlet_sub_domains = MeshFunction("bool", mesh, nDim-1)
+#dirichletSubdomain = MeshFunction("bool", mesh, geo.nDim-1)
+bndSubdomains = MeshFunction("size_t", mesh, geo._nDim-1)
+	
+# If there exist dirichlet boundary
+if 'boundaries' in dir(physics):
+	if (reutilizeBoundaryInfo and isfile(bndPath)):
+		bndSubdomains = MeshFunction("size_t", mesh, bndPath)
+	else:
+		# Mark Dirichlet faces
+		bndSubdomains.set_all(0)
+		for i in physics.boundaries:
+			class Aux(SubDomain):
+				def inside(self, x, on_boundary):
+					value = array([0.0])
+					physics.boundaries[i].eval(value, x)
+					return (value==1.0) and on_boundary
+			aux = Aux()
+			aux.mark(bndSubdomains, i)
+		# Save Dolfin XML format
+		File(bndPath) << bndSubdomains
+else: 
+	bndSubdomains.set_all(0)
+	
+## If there exist dirichlet boundary
+#if hasDirichlet:
+#	if os.path.isfile(dirichletPath):
+#		dirichletSubdomain = MeshFunction("bool", mesh, dirichletPath)
+#	else:
+#		# Mark faces
+#		dirichletSubdomain.set_all(False)
+#		class Aux(SubDomain):
+#			def inside(self, x, on_boundary):
+#				value = array([0.0])
+#				physics.dirichletBnd.eval(value, x)
+#				return (value==1.0) and on_boundary
+#		aux = Aux()
+#		aux.mark(dirichletSubdomain, True)
+#		aux.mark(bndSubdomains, 0)
 
-## Plot mesh
-#plot(mesh, interactive=True)
-
-## Save Dolfin XML format of the subdomains
-#File("mesh_func.xml") << faceSubdomains
-
-# Save sub domains to VTK files
-file = File("subdomains.pvd")
-file << faceSubdomains
-#file = File("dirichlet.pvd")
-#file << dirichlet_sub_domains
-
-# Get the set of subdomains
-setFaceSubdomains = set(faceSubdomains.array())
-nBoundarySubdomains = len(setFaceSubdomains)-1 #exclude 0 labels
+## Get the set of subdomains
+#setneumannSubdomains = set(neumannSubdomains.array())
+#nBoundarySubdomains = len(setneumannSubdomains)-1 #exclude 0 labels
 	
 # Define measures
-ds = Measure('ds', domain=mesh, subdomain_data=faceSubdomains)
+ds = Measure('ds', domain=mesh, subdomain_data=bndSubdomains) # boundary measure
+
+# Plot mesh
+#plot(mesh, interactive=True)
+#plot(bndSubdomains, interactive=True)
+#plot(dirichletSubdomain, interactive=True)
+
+# Save sub domains to VTK files
+bndFile = File("bndSubdomains.pvd")
+bndFile << bndSubdomains
 
 ###
-### Variational squeme
+### Variational scheme
 ###
 
-# Load Newmark parameters
-import demos.params.newmark as newmark
-# Load Finite Element Space params
-import demos.params.galerkin as fem
-
-# Defining function space
-V = VectorFunctionSpace(mesh, fem.family, fem.order)
+# Defining displacement space
+V = VectorFunctionSpace(mesh, finiteElement.family, finiteElement.order)
+# Stresss space
+S = TensorFunctionSpace(mesh, finiteElement.family, finiteElement.order)
 
 # Trial and test functions
-u = TrialFunction(V)
-v = TestFunction(V)
+uTrial = TrialFunction(V)
+w = TestFunction(V)
 
 # weak operators
-massOp = rho*inner(u, v)*dx
-stiffOp = inner(sigma(u), grad(v))*dx
-basisOp = [ inner(psi, v)*ds(i) for psi in psiBasis for i in range(nFacets) ]
-
-## Matrices and vectors
-#M = PETScMatrix()
-#R = PETScMatrix()
-#P = [ PETScVector() for i in range(len(basisOp)) ]
-
-## Assembling
-#assemble(massOp, tensor=M)
-#assemble(stiffOp, tensor=R)
-#[ assemble(basisOp[i], tensor=P[i]) for i in range(len(P)) ]
+massOp = physics.rho*inner(uTrial, w)*dx
+stiffOp = inner(elasticity.stress(physics.mu, physics.lmbda, uTrial), grad(w))*dx
 
 # Assembling
 M = assemble(massOp)
 R = assemble(stiffOp)
-FPsi = [ assemble(op) for op in basisOp ]
-nPsi = len(FPsi)
+
+## Create zero boundary condition
+#bc = DirichletBC(V, Constant(geo.nDim*[0.0]), dirichletSubdomain)
+
+## Construct dirichlet contribution vectors
+#dirichletM = PETScVector(MPI_COMM_WORLD, M.size(0))
+#bc.zero(M)
+#bc.zero_columns(M, dirichletM, 1)
+#dirichletR = PETScVector(MPI_COMM_WORLD, R.size(0))
+#bc.zero(R)
+#bc.zero_columns(R, dirichletR, 1)
 
 ###
 ### Output configuration
 ###
 
-outputFolder = "./results/"
+pvdFileU = File(outputFolder+"/u.pvd", "compressed")
+pvdFileV = File(outputFolder+"/v.pvd", "compressed")
+pvdFileStress = File(outputFolder+"/stress.pvd", "compressed")
 
-pvdFileU = [ File(outputFolder+"/u_psi_"+str(i)+".pvd") for i in range(nPsi)]
-pvdFileV = [ File(outputFolder+"/v_psi_"+str(i)+".pvd") for i in range(nPsi)]
+## Save sub domains to VTK files
+#bndFile = File(outputFolder+"/subdomains.pvd")
+#bndFile << neumannSubdomains
 
 ###
 ### Solver
 ###
 
-nT	= 100
-T = 1.0
+# Class representing the initial conditions
+u0 = project(physics.u0, V)
+v0 = project(physics.v0, V)
 
-dt 	= (T-T0)/nT
+# Initial condition
+tk = physics.t0
+u = u0
+v = v0
 
-# Preparing solvers
+# Source
+physics.f.t = tk
+timef = False
+fk = assemble(inner(physics.f, w)*dx)
+if isinstance(physics.f, Expression):
+	if 't' in physics.f.user_parameters: timef = True
+
+# Neumann boundary condition
+timeNeumann = False
+neumannk = 0
+if 'neumannBC' in dir(physics):
+	neumannOp = 0
+	for i in physics.neumannBC:
+		neumannOp += inner(physics.neumannBC[i], w)*ds(i)
+		if isinstance(physics.neumannBC[i], Expression):
+			if 't' in physics.neumannBC[i].user_parameters:
+				timeNeumann = True
+	neumannk = assemble(neumannOp)
+
+# Variational RHS
+pk = fk+neumannk
+
+# Dirichlet boundary condition
+dirichletBC = {}
+if 'dirichletBC' in dir(physics):
+	for i in physics.dirichletBC:
+		physics.dirichletBC[i].t = tk
+		ug = project(physics.dirichletBC[i], V)
+		dirichletBC[i] = DirichletBC(V, ug, bndSubdomains, i)
+		dirichletBC[i].apply(M)
+		dirichletBC[i].apply(R)
+
+# Timestep
+dt = (timeInterval.tf-physics.t0)/timeInterval.nt
+
+# Preparing linear solvers
 solverM = LUSolver(M)
-solverMdtR = LUSolver(M + newmarkBeta*dt*dt*R)
+solverMdtR = LUSolver(M + newmark.beta*dt*dt*R)
 solverM.parameters['reuse_factorization'] = True
 solverMdtR.parameters['reuse_factorization'] = True
 
-# Class representing the intial conditions
-u_0ini = project(u0, V)
-v_0ini = project(v0, V)
+# Save solutions in VTK format
+print("Time: ", tk)
+u.rename("u", "u")
+pvdFileU << (u, tk)
+v.rename("v", "v")
+pvdFileV << (v, tk)
+s = project(elasticity.stress(physics.mu, physics.lmbda, u), S)
+s.rename("s","s")
+pvdFileStress << (s, tk)
 
-# Psi loop
-for i in range(nPsi):
+for k in range(1, timeInterval.nt+1):
 
-	print("Psi: ", i)
+	t0 = tk
+	tk = physics.t0 + k*dt
+	print("Time: ", tk)
+
+	# Some additional terms
+	u_0  = u.vector()
+	v_0  = v.vector()
+	p0   = pk
 	
-	u = u_0ini
-	v = v_0ini
+	# Updating  dirichlet boundary condition
+	for i in dirichletBC:
+		if isinstance(physics.dirichletBC[i], Expression):
+			if 't' in physics.dirichletBC[i].user_parameters:
+				if verbose: print("Updating Dirichlet BC...")
+				physics.dirichletBC[i].t = tk
+				ug = project(physics.dirichletBC[i], V)
+				dirichletBC[i] = DirichletBC(V, ug, bndSubdomains, i)
+	
+	# Updating source
+	if timef:
+		if verbose: print("Updating f...")
+		physics.f.t = tk
+		fk = assemble(inner(physics.f, w)*dx)
+	
+	# Updating neumann boundary condition
+	if timeNeumann:
+		if verbose: print("Updating Neumann BC...")
+		neumannOp = 0
+		for i in physics.neumannBC:
+			neumannOp += inner(physics.neumannBC[i], w)*ds(i)
+		neumannk = assemble(neumannOp)
+	
+	# Updating variational RHS
+	pk = fk+neumannk
+	
+	# RHS for the first system
+	b1 = M*(u_0 + dt*v_0) \
+		+ R*(dt*dt*(newmark.beta-0.5)*u_0) \
+		+ dt*dt*( newmark.beta*pk + (0.5-newmark.beta)*p0 )
+	
+	# Apply boundary condition
+	if len(dirichletBC) > 0:
+		if verbose: print("Applying boundary condition...")
+		for i in dirichletBC: dirichletBC[i].apply(b1)
+
+	# Solve first system
+	solverMdtR.solve( u.vector(), b1 )
+	
+	# RHS for the second system
+	b2 = M*v_0 + R*(-dt*( newmark.gamma*u.vector() + (1-newmark.gamma)*u_0 )) \
+		+ dt*( newmark.gamma*pk + (1-newmark.gamma)*p0 )
+	
+	# Apply boundary condition
+	if len(dirichletBC) > 0:
+		if verbose: print("Applying boundary condition...")
+		for i in dirichletBC: dirichletBC[i].apply(b2)
+
+	# Solve second system
+	solverM.solve( v.vector(), b2 )
 
 	# Save solutions in VTK format
-	print("Time: ", T0)
-	pvdFileU[i] << u
-	pvdFileV[i] << v
-
-	tk = T0
-	for k in range(1, nT+1):
-
-		t0 = tk
-		tk = T0 + k*dt
-		print("Time: ", tk)
-	
-		# Some additional terms
-		u_0 	= u.vector()
-		v_0 	= v.vector()
-		Mv0 	= M*v_0
-	
-		# Solve first system
-		solverMdtR.solve( u.vector(),
-			M*u_0 + dt*Mv0 + 
-			dt*dt*(newmarkBeta-0.5)*R*u_0 + 
-			dt*dt*(newmarkBeta*(-(tk-T0))*FPsi[i] + (0.5-newmarkBeta)*(-(t0-T0))*FPsi[i])
-		)
-	
-		# Solve second system
-		solverM.solve( v.vector(),
-			Mv0 - 
-			dt*R*( newmarkGamma*u.vector() + (1-newmarkGamma)*u_0 ) + 
-			dt*( newmarkGamma*(-(tk-T0))*FPsi[i] + (1-newmarkGamma)*(-(t0-T0))*FPsi[i])
-		)
-
-		# Save solutions in VTK format
-		pvdFileU[i] << u
-		pvdFileV[i] << v
-
-## Plot solution
-#plot(u, interactive=True)
+	pvdFileU << (u, tk)
+	pvdFileV << (v, tk)
+	s = project(elasticity.stress(physics.mu, physics.lmbda, u), S)
+	s.rename("s","s")
+	pvdFileStress << (s, tk)

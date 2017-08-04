@@ -1,10 +1,10 @@
 from fenics import Point
 
 # Topological dimension
-nDim = 2
+nDim = 3
 
 # Points used for face elements
-geoPoints = (
+points = (
 	Point(0.0,0.0,0.0),
 	Point(1.0,0.0,0.0),
 	Point(0.0,1.0,0.0),
@@ -12,10 +12,10 @@ geoPoints = (
 )
 
 # Number of faces elements
-nFacets = 4
+nFaces = 4
 
 # Face elements
-geoFacets = (
+faces = (
 	(1,2,3),
 	(0,2,3),
 	(0,1,3),

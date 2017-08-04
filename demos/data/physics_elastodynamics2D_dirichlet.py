@@ -1,3 +1,9 @@
+'''
+Created on 3 de ago de 2017
+
+@author: weslley
+'''
+
 from fenics import Expression, Constant
 from numpy import sqrt, pi
 
